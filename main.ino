@@ -1,5 +1,7 @@
 #include <U8g2lib.h>
 #include <SPI.h>
+#include <ezButton.h>
+#include "images.h"
 
 #define OLED_CS D8   // Chân CS
 #define OLED_RST D1  // Chân RST
@@ -7,23 +9,28 @@
 
 U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI u8g2(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
 
-#define BUTTON_PIN D6  // Chân nút nhấn (GPIO0)
+#define BUTTON_PIN D0
+
+ezButton button(BUTTON_PIN);
 
 const int screenWidth = 128;
 const int screenHeight = 64;
-const int birdWidth = 6;
-const int birdHeight = 6;
+const int birdWidth = 17;
+const int birdHeight = 12;
 const float gravity = 0.45;
 const float jumpStrength = -2.5;
 const int pipeWidth = 10;
-const int pipeGap = 25;
+const int pipeGap = 33;
 const int pipeSpeed = 2;
 
 int birdX = 20;
 int birdY = screenHeight / 2;
 float birdVelocity = 0;
+int birdFrameCount = 0;
+
 int pipeX = screenWidth;
 int pipeHeight = random(10, 30);
+int pipeHeightHead = 4;
 
 bool isGameOver = false;
 bool hasScored = false; // Trạng thái đã ghi điểm
@@ -35,7 +42,6 @@ const long interval = 50;  // Điều chỉnh tốc độ khung hình
 #define GAMEPLAY_SCREEN 1
 #define GAMEOVER_SCREEN 2
 
-int prevButtonState = HIGH;  // the previous state from the input pin
 int buttonState;             // the current reading from the input pin
 int score = 0;
 int gameState = MAIN_MENU_SCREEN;
@@ -44,11 +50,15 @@ void setup() {
   u8g2.begin();
   u8g2.setFont(u8g2_font_ncenB08_tr);  // Chọn font để hiển thị
   Serial.begin(9600);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);  // Cài đặt nút nhấn
+  // pinMode(BUTTON_PIN, INPUT_PULLUP);  // Cài đặt nút nhấn
+  button.setDebounceTime(50); // set debounce time to 50 milliseconds
 }
 
 void loop() {
-  buttonState = digitalRead(buttonState);
+  button.loop();  // Cập nhật trạng thái nút
+  // buttonState = digitalRead(buttonState);
+  buttonState = button.getState();
+  Serial.println(buttonState);
   if (gameState == MAIN_MENU_SCREEN) {
     drawMainScreen();
   } else if (gameState == GAMEPLAY_SCREEN) {
@@ -59,13 +69,28 @@ void loop() {
 }
 
 void drawBird() {
-  u8g2.drawBox(birdX, birdY, birdWidth, birdHeight);
+  if (birdFrameCount < ANIM_FRAME / 3) {
+      u8g2.drawXBMP(birdX, birdY, birdWidth, birdHeight, bird_frame_1);
+  } else if (birdFrameCount < ANIM_FRAME / 2) {
+      u8g2.drawXBMP(birdX, birdY, birdWidth, birdHeight, bird_frame_2);
+  } else {
+      u8g2.drawXBMP(birdX, birdY, birdWidth, birdHeight, bird_frame_3);
+  }
+  birdFrameCount++;
+  if (birdFrameCount >= ANIM_FRAME) birdFrameCount = 0;
 }
 
 void drawPipe() {
+  // Ống trên
   u8g2.drawBox(pipeX, 0, pipeWidth, pipeHeight);
-  u8g2.drawBox(pipeX, pipeHeight + pipeGap, pipeWidth, screenHeight - pipeHeight - pipeGap);
+  u8g2.drawBox(pipeX - 1, pipeHeight, pipeWidth + 2, pipeHeightHead);
+  
+  // Ống dưới
+  int bottomPipeHeight = screenHeight - pipeHeight - pipeGap;
+  u8g2.drawBox(pipeX - 1, pipeHeight + pipeGap, pipeWidth + 2, pipeHeightHead);
+  u8g2.drawBox(pipeX, pipeHeight + pipeGap + pipeHeightHead, pipeWidth, bottomPipeHeight);
 }
+
 
 void drawPlayScreen() {
   unsigned long currentMillis = millis();
@@ -90,15 +115,21 @@ void drawPlayScreen() {
       }
 
       // Nhấn nút để làm cho chim bay lên
-      if (digitalRead(BUTTON_PIN) == LOW) {
+      // if (digitalRead(BUTTON_PIN) == LOW) {
+      //   birdVelocity = jumpStrength;
+      // }
+      if (buttonState == HIGH) {
+        Serial.println("The button is pressed");
         birdVelocity = jumpStrength;
       }
 
       // Kiểm tra va chạm
-      if (birdY > screenHeight - birdHeight || birdY < 0 || (birdX + birdWidth > pipeX && birdX < pipeX + pipeWidth && (birdY < pipeHeight || birdY + birdHeight > pipeHeight + pipeGap))) {
+      if (birdY > screenHeight - birdHeight || birdY < 0 || 
+          (birdX + birdWidth > pipeX && birdX < pipeX + pipeWidth &&
+           ((birdY < pipeHeight + pipeHeightHead) ||
+            (birdY + birdHeight > pipeHeight + pipeGap - pipeHeightHead)))) {
         isGameOver = true;
       }
-
       // Vẽ trò chơi
       u8g2.clearBuffer();
       drawBird();
@@ -117,12 +148,18 @@ void drawPlayScreen() {
 void drawGameOverScreen() {
   // Vẽ màn hình game over
   u8g2.clearBuffer();
-  u8g2.drawStr(screenWidth / 2 - 30, screenHeight / 3, "Game Over");
-  u8g2.drawStr(22, screenHeight / 2, "(Press to play)");
+  u8g2.drawStr(28, 15, "GAME OVER");
+  char scoreStr[10];
+  sprintf(scoreStr, "Score: %d", score);
+  u8g2.drawStr(36, 30, scoreStr);
+  u8g2.drawStr(18, 45, "(Press to restart)");
   u8g2.sendBuffer();
-
   // Nhấn nút để khởi động lại trò chơi
-  if (digitalRead(BUTTON_PIN) == LOW) {
+  // if (digitalRead(BUTTON_PIN) == LOW) {
+  //   resetGame();
+  // }
+  if (buttonState == HIGH) {
+    delay(1000);
     resetGame();
   }
 }
@@ -130,12 +167,16 @@ void drawGameOverScreen() {
 void drawMainScreen() {
   // Vẽ màn hình game over
   u8g2.clearBuffer();
-  u8g2.drawStr(16, screenHeight / 3, "Game Chim Non");
-  u8g2.drawStr(22, screenHeight / 2, "(Press to play)");
+  u8g2.drawStr(20, 15, "Game Chim Vui");
+  u8g2.drawXBMP((screenWidth / 2) - (birdHeight / 2), 24, birdWidth, birdHeight, bird_frame_1);
+  u8g2.drawStr(24, 45, "(Press to play)");
   u8g2.sendBuffer();
 
   // Nhấn nút để khởi động lại trò chơi
-  if (digitalRead(BUTTON_PIN) == LOW) {
+  // if (digitalRead(BUTTON_PIN) == LOW) {
+  //   gameState = GAMEPLAY_SCREEN;
+  // }
+  if (buttonState == HIGH) {
     gameState = GAMEPLAY_SCREEN;
   }
 }
