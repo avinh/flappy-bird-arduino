@@ -2,6 +2,8 @@
 
 The "Game Chim Non" is a simple game written in C++ for Arduino, utilizing an OLED display and the U8g2 library for graphics. The game is similar to "Flappy Bird," where you control a bird to navigate through obstacle pipes.
 
+[Video Demo](https://youtu.be/Y0-E4L6Uz6U?si=PzLHGkDlQUJXP4_d)
+
 ## Hardware Requirements
 
 - Arduino (Uno, Nano, or compatible versions)
